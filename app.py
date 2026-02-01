@@ -1,19 +1,19 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import os
 
 st.set_page_config(page_title="Mon Réseau Personnel", layout="centered")
 
-def init_db():
-    conn = sqlite3.connect('famille.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS membres 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT, prenom TEXT, role TEXT)''')
-    conn.commit()
-    conn.close()
+def get_connection():
+    return sqlite3.connect('famille.db')
 
-init_db()
+# Initialisation
+conn = get_connection()
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS membres 
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT, prenom TEXT, role TEXT)''')
+conn.commit()
+conn.close()
 
 st.title("Système d'Authentification Personnel")
 st.write("Veuillez entrer vos informations pour vérifier votre lien avec moi.")
@@ -25,7 +25,7 @@ with st.container():
     
     if st.button("Lancer la vérification"):
         if nom_input and prenom_input:
-            conn = sqlite3.connect('famille.db')
+            conn = get_connection()
             query = "SELECT role FROM membres WHERE UPPER(nom) = ? AND PRENOM = ?"
             res = pd.read_sql_query(query, conn, params=(nom_input, prenom_input))
             conn.close()
@@ -36,30 +36,65 @@ with st.container():
                 st.success(f"Identification réussie : {prenom_input}, tu es pour moi : **{resultat}**.")
             else:
                 st.error("Identité non reconnue dans mon système.")
-        else:
-            st.warning("Informations manquantes.")
 
-# --- Administration ---
+# --- Paramètres Système (ADMIN) ---
 with st.expander("Paramètres Système"):
     access_key = st.text_input("Clé d'accès :", type="password")
     if access_key == "ivan2024":
-        st.subheader("Gestion des accès")
-        with st.form("ajout_membre"):
-            n_nom = st.text_input("Nom")
-            n_prenom = st.text_input("Prénom")
-            n_role = st.text_input("Définir le lien (ex: Amie, Cousin, etc.)")
-            if st.form_submit_button("Enregistrer"):
-                if n_nom and n_prenom and n_role:
-                    conn = sqlite3.connect('famille.db')
+        
+        tab1, tab2, tab3 = st.tabs(["Ajouter", "Modifier", "Supprimer"])
+
+        # TAB 1 : AJOUTER
+        with tab1:
+            with st.form("ajout"):
+                n_nom = st.text_input("Nom")
+                n_prenom = st.text_input("Prénom")
+                n_role = st.text_input("Lien")
+                if st.form_submit_button("Enregistrer"):
+                    conn = get_connection()
                     c = conn.cursor()
                     c.execute('INSERT INTO membres (nom, prenom, role) VALUES (?,?,?)', 
                               (n_nom.upper().strip(), n_prenom.capitalize().strip(), n_role))
                     conn.commit()
                     conn.close()
-                    st.success("Enregistrement effectué.")
-        
-        if st.checkbox("Voir la base de données"):
-            conn = sqlite3.connect('famille.db')
-            df = pd.read_sql_query("SELECT nom, prenom, role FROM membres", conn)
+                    st.success("Ajouté !")
+
+        # TAB 2 : MODIFIER
+        with tab2:
+            conn = get_connection()
+            df_mod = pd.read_sql_query("SELECT * FROM membres", conn)
             conn.close()
-            st.dataframe(df)
+            if not df_mod.empty:
+                liste_noms = df_mod['prenom'] + " " + df_mod['nom']
+                choix = st.selectbox("Qui modifier ?", liste_noms)
+                id_membre = df_mod.iloc[liste_noms.tolist().index(choix)]['id']
+                
+                new_role = st.text_input("Nouveau lien pour " + choix)
+                if st.button("Mettre à jour"):
+                    conn = get_connection()
+                    c = conn.cursor()
+                    c.execute('UPDATE membres SET role = ? WHERE id = ?', (new_role, int(id_membre)))
+                    conn.commit()
+                    conn.close()
+                    st.success("Modifié !")
+            else:
+                st.info("Aucun membre.")
+
+        # TAB 3 : SUPPRIMER
+        with tab3:
+            conn = get_connection()
+            df_del = pd.read_sql_query("SELECT * FROM membres", conn)
+            conn.close()
+            if not df_del.empty:
+                liste_del = df_del['prenom'] + " " + df_del['nom']
+                a_supprimer = st.selectbox("Qui supprimer ?", liste_del)
+                id_del = df_del.iloc[liste_del.tolist().index(a_supprimer)]['id']
+                
+                if st.button("Supprimer définitivement"):
+                    conn = get_connection()
+                    c = conn.cursor()
+                    c.execute('DELETE FROM membres WHERE id = ?', (int(id_del),))
+                    conn.commit()
+                    conn.close()
+                    st.warning("Membre supprimé.")
+                    st.rerun()
