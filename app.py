@@ -5,7 +5,7 @@ import pandas as pd
 st.set_page_config(page_title="Mon Réseau Personnel", layout="centered")
 
 def get_connection():
-    return sqlite3.connect('famille.db')
+    return sqlite3.connect('famille.db') 
 
 # Initialisation
 conn = get_connection()
